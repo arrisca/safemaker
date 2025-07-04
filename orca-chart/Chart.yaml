@@ -1,0 +1,36 @@
+apiVersion: v2
+name: orca-chart
+description: A Helm umbrella chart for Orca deployment with Airflow, Spark, and PostgreSQL
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/your-org/orca-chart
+maintainers:
+  - name: DevOps Team
+    email: devops@your-domain.com
+keywords:
+  - airflow
+  - spark
+  - postgresql
+  - data-platform
+  - umbrella-chart
+dependencies:
+  - name: airflow
+    version: "1.11.0"
+    repository: "https://airflow.apache.org"
+    condition: airflow.enabled
+  - name: spark
+    version: "4.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: spark.enabled
+  - name: postgresql
+    version: "13.4.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.1.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+annotations:
+  category: DataPlatform
+  licenses: Apache-2.0
