@@ -1,0 +1,27 @@
+apiVersion: v2
+name: airflow
+description: Apache Airflow chart for Orca platform
+type: application
+version: 1.0.0
+appVersion: "2.8.1"
+home: https://airflow.apache.org
+maintainers:
+  - name: DevOps Team
+    email: devops@your-domain.com
+keywords:
+  - airflow
+  - workflow
+  - orchestration
+  - dag
+dependencies:
+  - name: postgresql
+    version: "13.4.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.1.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+annotations:
+  category: WorkflowOrchestration
+  licenses: Apache-2.0

@@ -1,0 +1,144 @@
+# Default values for postgres
+# This is a YAML-formatted file.
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: postgres
+    database: postgres
+    existingSecret: ""
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+      replicationPasswordKey: replication-password
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClass: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    
+    initdb:
+      scripts:
+        init.sql: |
+          CREATE DATABASE airflow;
+          CREATE DATABASE spark;
+          GRANT ALL PRIVILEGES ON DATABASE airflow TO postgres;
+          GRANT ALL PRIVILEGES ON DATABASE spark TO postgres;
+    
+    configuration: |
+      max_connections = 100
+      shared_buffers = 128MB
+      effective_cache_size = 512MB
+      maintenance_work_mem = 64MB
+      checkpoint_completion_target = 0.9
+      wal_buffers = 16MB
+      default_statistics_target = 100
+      random_page_cost = 1.1
+      effective_io_concurrency = 200
+      work_mem = 4MB
+      min_wal_size = 80MB
+      max_wal_size = 1GB
+      max_worker_processes = 4
+      max_parallel_workers_per_gather = 2
+      max_parallel_workers = 4
+      max_parallel_maintenance_workers = 2
+  
+  readReplicas:
+    replicaCount: 0
+  
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  
+  networkPolicy:
+    enabled: false
+  
+  volumePermissions:
+    enabled: false
+  
+  shmVolume:
+    enabled: true
+    sizeLimit: 1Gi
+  
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  
+  rbac:
+    create: true
+  
+  # Backup configuration
+  backup:
+    enabled: false
+    schedule: "0 2 * * *"
+    retention: 7
+    
+  # Security context
+  securityContext:
+    enabled: true
+    fsGroup: 1001
+    runAsUser: 1001
+    runAsNonRoot: true
+  
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    seccompProfile:
+      type: RuntimeDefault
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 5432
+  nodePort: ""
+  clusterIP: ""
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  hostname: postgres.local
+  annotations: {}
+  tls: false
+  
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: ""

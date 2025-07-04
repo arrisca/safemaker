@@ -1,0 +1,97 @@
+# Default values for spark
+# This is a YAML-formatted file.
+
+image:
+  repository: bitnami/spark
+  tag: 3.5.0
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Spark configuration
+sparkHome: /opt/bitnami/spark
+sparkUser: spark
+
+# Master configuration
+master:
+  replicaCount: 1
+  webPort: 8080
+  service:
+    type: ClusterIP
+    port: 7077
+    webPort: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Worker configuration
+worker:
+  replicaCount: 2
+  webPort: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: spark.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Persistence
+persistence:
+  enabled: true
+  size: 8Gi
+  storageClass: ""
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+# Pod security context
+podSecurityContext:
+  fsGroup: 1001
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Spark configuration
+sparkConf:
+  spark.sql.warehouse.dir: /opt/spark/spark-warehouse
+  spark.sql.catalogImplementation: hive
+  spark.sql.adaptive.enabled: true
+  spark.sql.adaptive.coalescePartitions.enabled: true

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: spark
+description: Apache Spark chart for Orca platform
+type: application
+version: 1.0.0
+appVersion: "3.5.0"
+home: https://spark.apache.org
+maintainers:
+  - name: DevOps Team
+    email: devops@your-domain.com
+keywords:
+  - spark
+  - bigdata
+  - analytics
+  - processing
+annotations:
+  category: BigData
+  licenses: Apache-2.0

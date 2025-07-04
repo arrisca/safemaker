@@ -1,0 +1,21 @@
+apiVersion: v2
+name: postgres
+description: PostgreSQL chart for Orca platform
+type: application
+version: 1.0.0
+appVersion: "15.4.0"
+home: https://postgresql.org
+maintainers:
+  - name: DevOps Team
+    email: devops@your-domain.com
+keywords:
+  - postgresql
+  - database
+  - sql
+dependencies:
+  - name: postgresql
+    version: "13.4.0"
+    repository: "https://charts.bitnami.com/bitnami"
+annotations:
+  category: Database
+  licenses: Apache-2.0
