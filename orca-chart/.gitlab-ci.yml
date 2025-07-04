@@ -1,0 +1,203 @@
+stages:
+  - validate
+  - terraform
+  - lint
+  - diff
+  - deploy
+  - approval
+  - cleanup
+
+# Variables that can be set through GitLab CI/CD interface
+variables:
+  DEPLOY_TARGET: "umbrella"  # Options: umbrella, airflow, spark, postgres
+  ENVIRONMENT: "dev"         # Options: dev, uat, prod
+  DATACENTER: "GL"          # Options: GL, SL
+  ACTION: "install"         # Options: install, upgrade, uninstall, diff
+  HELM_VERSION: "3.14.0"
+  KUBECTL_VERSION: "1.29.0"
+  TERRAFORM_VERSION: "1.6.0"
+  
+  # OpenShift specific variables
+  OPENSHIFT_SERVER: ""
+  OPENSHIFT_TOKEN: ""
+  OPENSHIFT_PROJECT: ""
+  
+  # Terraform variables
+  TF_VAR_resource_group: ""
+  TF_VAR_location: ""
+  TF_VAR_pg_password: ""
+
+# YAML anchors for reusability
+.base_setup: &base_setup
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl bash git jq
+    - curl -LO "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    - chmod 700 get_helm.sh && ./get_helm.sh --version v${HELM_VERSION}
+    - helm plugin install https://github.com/databus23/helm-diff || true
+
+.terraform_setup: &terraform_setup
+  image: hashicorp/terraform:${TERRAFORM_VERSION}
+  before_script:
+    - cd terraform
+    - terraform init
+
+.openshift_login: &openshift_login
+  - |
+    if [ -n "${OPENSHIFT_SERVER}" ] && [ -n "${OPENSHIFT_TOKEN}" ]; then
+      oc login --token=${OPENSHIFT_TOKEN} --server=${OPENSHIFT_SERVER}
+      oc project ${OPENSHIFT_PROJECT} || oc new-project ${OPENSHIFT_PROJECT}
+    else
+      echo "OpenShift credentials not provided. Skipping login."
+    fi
+
+.validation_rules: &validation_rules
+  script:
+    - ./scripts/validate_inputs.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^(dev|uat|prod)$/
+
+# Stage 1: Validate inputs and environment
+validate:
+  <<: *base_setup
+  stage: validate
+  script:
+    - echo "Validating inputs..."
+    - echo "DEPLOY_TARGET: ${DEPLOY_TARGET}"
+    - echo "ENVIRONMENT: ${ENVIRONMENT}"
+    - echo "DATACENTER: ${DATACENTER}"
+    - echo "ACTION: ${ACTION}"
+    - ./scripts/validate_inputs.sh
+    - echo "Validation completed successfully"
+  artifacts:
+    paths:
+      - validation-report.txt
+    expire_in: 1 hour
+  <<: *validation_rules
+
+# Stage 2: Terraform - PostgreSQL provisioning
+terraform:
+  <<: *terraform_setup
+  stage: terraform
+  script:
+    - echo "Planning Terraform deployment..."
+    - terraform plan -var="environment=${ENVIRONMENT}" -var="datacenter=${DATACENTER}" -out=tfplan
+    - |
+      if [ "${ACTION}" != "diff" ]; then
+        echo "Applying Terraform changes..."
+        terraform apply -auto-approve tfplan
+      else
+        echo "Terraform diff completed. Skipping apply."
+      fi
+  artifacts:
+    paths:
+      - terraform/tfplan
+      - terraform/terraform.tfstate
+    expire_in: 1 day
+  dependencies:
+    - validate
+  rules:
+    - if: $DEPLOY_TARGET == "postgres" || $DEPLOY_TARGET == "umbrella"
+    - if: $ACTION == "install" || $ACTION == "upgrade"
+
+# Stage 3: Helm Lint
+lint:
+  <<: *base_setup
+  stage: lint
+  script:
+    - echo "Linting Helm charts..."
+    - ./scripts/helm_lint.sh
+    - echo "Helm lint completed"
+  artifacts:
+    paths:
+      - lint-report.txt
+    expire_in: 1 hour
+  dependencies:
+    - validate
+  <<: *validation_rules
+
+# Stage 4: Helm Diff (dry-run preview)
+diff:
+  <<: *base_setup
+  stage: diff
+  script:
+    - echo "Generating Helm diff..."
+    - *openshift_login
+    - ./scripts/helm_diff.sh
+    - echo "Helm diff completed"
+  artifacts:
+    paths:
+      - diff-report.txt
+    expire_in: 1 day
+  dependencies:
+    - lint
+  rules:
+    - if: $ACTION == "diff"
+    - if: $ACTION == "install" || $ACTION == "upgrade"
+      when: manual
+      allow_failure: true
+
+# Stage 5: Deployment
+deploy:
+  <<: *base_setup
+  stage: deploy
+  script:
+    - echo "Deploying to ${ENVIRONMENT} environment..."
+    - *openshift_login
+    - ./scripts/helm_deploy.sh
+    - echo "Deployment completed"
+  artifacts:
+    paths:
+      - deployment-report.txt
+    expire_in: 1 week
+  dependencies:
+    - lint
+    - terraform
+  rules:
+    - if: $ENVIRONMENT == "prod"
+      when: manual
+    - if: $ACTION == "install" || $ACTION == "upgrade"
+    - if: $ACTION == "uninstall"
+      when: manual
+
+# Stage 6: Production Approval
+approval:
+  stage: approval
+  script:
+    - echo "Manual approval required for production deployment"
+    - echo "Please review the deployment and approve if ready"
+  rules:
+    - if: $ENVIRONMENT == "prod"
+      when: manual
+  dependencies:
+    - deploy
+
+# Stage 7: Cleanup
+cleanup:
+  <<: *base_setup
+  stage: cleanup
+  script:
+    - echo "Performing cleanup tasks..."
+    - ./scripts/cleanup.sh
+    - echo "Cleanup completed"
+  when: always
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Rollback job (manual trigger)
+rollback:
+  <<: *base_setup
+  stage: deploy
+  script:
+    - echo "Rolling back deployment..."
+    - *openshift_login
+    - ./scripts/helm_rollback.sh
+    - echo "Rollback completed"
+  when: manual
+  rules:
+    - if: $ACTION == "rollback"
