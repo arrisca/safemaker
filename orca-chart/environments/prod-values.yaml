@@ -1,0 +1,307 @@
+# Production Environment Values
+global:
+  environment: prod
+  datacenter: GL
+  imageRegistry: your-registry.azurecr.io
+  imagePullSecrets:
+    - name: registry-secret
+  storageClass: premium-ssd
+  
+# PostgreSQL Configuration
+postgresql:
+  enabled: true
+  host: "orca-chart-prod-gl-postgres.postgres.database.azure.com"
+  port: 5432
+  auth:
+    username: postgres_admin
+    existingSecret: postgres-secret
+    secretKeys:
+      adminPasswordKey: POSTGRES_PASSWORD
+  databases:
+    - airflow
+    - spark
+  
+# Airflow Configuration
+airflow:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: your-registry.azurecr.io/airflow
+    tag: 2.8.1
+    pullPolicy: IfNotPresent
+  
+  webserver:
+    replicaCount: 3
+    service:
+      type: ClusterIP
+      port: 8080
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+  
+  scheduler:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+  
+  workers:
+    replicaCount: 5
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+  
+  config:
+    webserver:
+      base_url: "https://airflow.your-domain.com"
+    core:
+      executor: CeleryExecutor
+      sql_alchemy_conn: postgresql://postgres_admin@orca-chart-prod-gl-postgres.postgres.database.azure.com:5432/airflow
+      max_active_tasks_per_dag: 16
+      max_active_runs_per_dag: 16
+    celery:
+      broker_url: redis://redis:6379/0
+      result_backend: db+postgresql://postgres_admin@orca-chart-prod-gl-postgres.postgres.database.azure.com:5432/airflow
+      worker_concurrency: 16
+    logging:
+      remote_logging: true
+      remote_base_log_folder: s3://your-s3-bucket/airflow-logs
+    smtp:
+      smtp_host: smtp.your-domain.com
+      smtp_port: 587
+      smtp_starttls: true
+      smtp_ssl: false
+      smtp_user: airflow@your-domain.com
+      smtp_mail_from: airflow@your-domain.com
+  
+  persistence:
+    enabled: true
+    size: 200Gi
+    storageClass: premium-ssd
+    
+# Spark Configuration
+spark:
+  enabled: true
+  image:
+    repository: your-registry.azurecr.io/spark
+    tag: 3.5.0
+    pullPolicy: IfNotPresent
+  
+  master:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 4Gi
+  
+  worker:
+    replicaCount: 6
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 4Gi
+    
+    autoscaling:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+  
+  config:
+    spark.sql.warehouse.dir: /opt/spark/spark-warehouse
+    spark.sql.catalogImplementation: hive
+    spark.sql.adaptive.enabled: true
+    spark.sql.adaptive.coalescePartitions.enabled: true
+    spark.sql.adaptive.coalescePartitions.minPartitionNum: 1
+    spark.sql.adaptive.advisoryPartitionSizeInBytes: 64MB
+    spark.sql.adaptive.skewJoin.enabled: true
+    spark.serializer: org.apache.spark.serializer.KryoSerializer
+    spark.sql.execution.arrow.pyspark.enabled: true
+    
+  persistence:
+    enabled: true
+    size: 500Gi
+    storageClass: premium-ssd
+
+# Redis Configuration (for Airflow Celery)
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7.0
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 6379
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: premium-ssd
+    
+  # Redis High Availability
+  sentinel:
+    enabled: true
+    masterName: mymaster
+    replicaCount: 3
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+  tls:
+    - hosts:
+        - airflow.your-domain.com
+        - spark.your-domain.com
+      secretName: orca-chart-prod-tls
+  hosts:
+    - host: airflow.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: airflow-webserver
+            port: 8080
+    - host: spark.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: spark-master
+            port: 8080
+
+# Monitoring
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    retention: 30d
+    storageClass: premium-ssd
+    storage: 100Gi
+  grafana:
+    enabled: true
+    adminPassword: PROD_Admin_Password_123_SECURE
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: premium-ssd
+  alertmanager:
+    enabled: true
+    config:
+      global:
+        smtp_smarthost: 'smtp.your-domain.com:587'
+        smtp_from: 'alerts@your-domain.com'
+      route:
+        group_by: ['alertname']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'web.hook'
+      receivers:
+        - name: 'web.hook'
+          email_configs:
+            - to: 'ops-team@your-domain.com'
+              subject: 'Orca Chart Alert'
+
+# Security
+security:
+  networkPolicies:
+    enabled: true
+  podSecurityPolicy:
+    enabled: true
+  rbac:
+    enabled: true
+    
+# Resource Quotas
+resourceQuotas:
+  enabled: true
+  requests:
+    cpu: 20000m
+    memory: 40Gi
+  limits:
+    cpu: 40000m
+    memory: 80Gi
+  
+# Backup Configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: 30
+  destination: s3://your-s3-bucket/backups
+  
+# OpenShift specific configurations
+openshift:
+  enabled: true
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  route:
+    enabled: true
+    host: airflow.apps.your-openshift-cluster.com
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+      certificate: |
+        -----BEGIN CERTIFICATE-----
+        # Your SSL certificate here
+        -----END CERTIFICATE-----
+      key: |
+        -----BEGIN PRIVATE KEY-----
+        # Your private key here
+        -----END PRIVATE KEY-----
+
+# Disaster Recovery
+disasterRecovery:
+  enabled: true
+  crossRegionReplication: true
+  backupSchedule: "0 3 * * *"
+  retentionPeriod: 90
